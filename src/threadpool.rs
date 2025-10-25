@@ -1,14 +1,19 @@
 use std::{
     sync::{
         Arc, Mutex,
-        mpsc::{self, Receiver},
+        mpsc::{self},
     },
     thread::{self, JoinHandle},
 };
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: mpsc::Sender<Message>,
+}
+
+enum Message {
+    NewJob(Job),
+    Terminate,
 }
 
 trait FnBox {
@@ -21,39 +26,68 @@ impl<F: FnOnce()> FnBox for F {
 }
 type Job = Box<dyn FnBox + Send + 'static>;
 
-struct PoolCreationError;
 impl ThreadPool {
-    pub fn new(size: usize) -> Result<ThreadPool, PoolCreationError> {
+    pub fn new(size: usize) -> ThreadPool {
         assert!(size > 0);
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::channel(); // notice how rust didnt make u specify the type.
+        // its kinda like ocaml in that it looks forward in the code and infers the type from that
         let receiver = Arc::new(Mutex::new(receiver));
         let mut workers = Vec::with_capacity(size);
         for id in 0..size {
             workers.push(Worker::new(id, Arc::clone(&receiver)));
         }
-        Ok(ThreadPool { workers, sender })
+
+        ThreadPool { workers, sender }
     }
     pub fn execute<F>(&self, f: F)
     where
         F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
-        self.sender.send(job).unwrap();
+
+        self.sender.send(Message::NewJob(job)).unwrap();
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        for _ in &mut self.workers {
+            self.sender.send(Message::Terminate).unwrap();
+        }
+        for worker in &mut self.workers {
+            println!("shutting down worker {}", worker.id);
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
+        }
     }
 }
 
 struct Worker {
     id: usize,
-    thread: JoinHandle<()>,
+    thread: Option<JoinHandle<()>>,
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Self {
+    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
         let thread = thread::spawn(move || {
-            let job = receiver.lock().unwrap().recv().unwrap();
-            println!("Worker {} got a job; executing.", id);
-            job.call_box();
+            loop {
+                let msg = receiver.lock().unwrap().recv().unwrap();
+                match msg {
+                    Message::NewJob(job) => {
+                        println!("worker {} got a job; executing.", id);
+                        job.call_box();
+                    }
+                    Message::Terminate => {
+                        println!("worker {} was told to terminate.", id);
+                        break;
+                    }
+                }
+            }
         });
-        Worker { id, thread }
+        Worker {
+            id,
+            thread: Some(thread),
+        }
     }
 }

@@ -3,8 +3,8 @@ use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     str::FromStr,
-    thread,
 };
+mod threadpool;
 
 #[derive(Hash, Debug, PartialEq, Eq, Clone)]
 pub enum Method {
@@ -34,16 +34,22 @@ pub struct Response {
 
 impl Response {
     pub fn new() -> Self {
-        Self {
+        let mut s = Self {
             status: 200,
             headers: HashMap::new(),
             body: None,
-        }
+        };
+        s.set_header("Connection", "close");
+        s
     }
 
     pub fn set_body_json(self: &mut Response, s: &String) {
         self.body = Some(s.into());
         self.set_header("Content-Type", "text/json");
+    }
+    pub fn set_body_plain(self: &mut Response, s: &String) {
+        self.body = Some(s.into());
+        self.set_header("Content-Type", "text/plain");
     }
 
     pub fn set_header(&mut self, key: &str, val: &str) {
@@ -99,7 +105,15 @@ impl Request {
                 break;
             }
         }
-        let header_end = buf.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+        let header_end = match buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            Some(pos) => pos,
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "invalid http request: missing headers",
+                ));
+            }
+        };
         let header_bytes = &buf[..header_end];
         let headers_str = std::str::from_utf8(header_bytes).unwrap_or("");
 
@@ -165,18 +179,28 @@ impl Server {
     pub fn add_route(&mut self, method: Method, route: &str, handler: Handler) {
         self.routes.insert((method, route.to_string()), handler);
     }
+
+    // fn route_static(path: &str) -> Response {
+    //     Response::new()
+    // }
+    // pub fn add_route_static(&mut self, route: &str, path: &str) {
+    //     self.routes.insert((Method::GET, route.to_string()), );
+    // }
     pub fn serve(&self) -> Result<(), std::io::Error> {
         // let total = Arc::new(AtomicUsize::new(0));
         let listener = TcpListener::bind(self.addr)?;
+        let pool = threadpool::ThreadPool::new(4);
         for sopt in listener.incoming() {
             let mut stream = sopt?;
             let routes = self.routes.clone();
 
-            thread::spawn(move || {
+            pool.execute(move || {
                 let request = match Request::from_stream(&mut stream) {
                     Ok(r) => r,
                     Err(e) => {
                         eprintln!("failed to parse request: {}", e);
+                        _ = stream.write_all(b"HTTP/1.1 400 Bad Request\r\n");
+                        _ = stream.flush();
                         return;
                     }
                 };

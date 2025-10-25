@@ -7,8 +7,7 @@ fn main() -> std::io::Result<()> {
     router.add_route(Method::GET, "/hello", |request| {
         let mut res = Response::new();
         let body = (format!("hiiii!!! ur ip is {}", request.peer_addr)).to_string();
-        res.set_body_json(&body);
-        res.set_header("Content-Type", "text/json");
+        res.set_body_plain(&body);
         res
     });
 
