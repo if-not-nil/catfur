@@ -1,8 +1,32 @@
 # catfur
-an implementation for a http server in rust. 
+an implementation for a http server in rust. works on top of regular sockets and regex
 
 the api is really simple and straightforward
 
+you can use two ways of making servers
+
+## the builder pattern
+```rust
+use catfur::builders::{ResponseBuilder, ServerBuilder};
+
+fn main() -> std::io::Result<()> {
+    ServerBuilder::new("localhost:8080")
+        .get(
+            "/hello",
+            Box::new(|req: &catfur::Request| {
+                ResponseBuilder::ok()
+                    .body(format!("hiiii!!! ur ip is {}", req.peer_addr).into())
+                    .build()
+            }),
+        )
+        .static_route("/static/*", "./static")
+        .build()
+        .serve()
+}
+
+```
+
+## procedural way
 ```rust
 use catfur::{Method, Response, Server};
 
@@ -21,6 +45,7 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 ```
+both examples are in the `examples/` directory
 
 it can do 20k requests per second on an M1 with a simple route, too
 ```bash
