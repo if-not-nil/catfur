@@ -1,9 +1,14 @@
 use std::{
     collections::HashMap,
+    fs::File,
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    path::Path,
     str::FromStr,
+    sync::Arc,
 };
+
+use regex::Regex;
 mod threadpool;
 
 #[derive(Hash, Debug, PartialEq, Eq, Clone)]
@@ -42,6 +47,16 @@ impl Response {
         s.set_header("Connection", "close");
         s
     }
+    pub fn new_404() -> Self {
+        let mut s = Self {
+            status: 404,
+            headers: HashMap::new(),
+            body: None,
+        };
+        s.set_header("Connection", "close");
+        s.set_body_plain(&"not found!".to_string());
+        s
+    }
 
     pub fn set_body_json(self: &mut Response, s: &String) {
         self.body = Some(s.into());
@@ -50,6 +65,11 @@ impl Response {
     pub fn set_body_plain(self: &mut Response, s: &String) {
         self.body = Some(s.into());
         self.set_header("Content-Type", "text/plain");
+    }
+
+    pub fn set_body_html(self: &mut Response, s: &String) {
+        self.body = Some(s.into());
+        self.set_header("Content-Type", "text/html");
     }
 
     pub fn set_header(&mut self, key: &str, val: &str) {
@@ -86,7 +106,7 @@ pub struct Request {
     pub peer_addr: SocketAddr,
 }
 
-type Handler = fn(&Request) -> Response;
+type Handler = Box<dyn Fn(&Request) -> Response + Send + Sync>;
 
 impl Request {
     fn from_stream(stream: &mut TcpStream) -> Result<Self, std::io::Error> {
@@ -162,9 +182,10 @@ impl Request {
 }
 
 pub struct Server {
-    routes: HashMap<(Method, String), Handler>,
+    routes: Arc<HashMap<(Method, String), Handler>>,
     addr: SocketAddr,
 }
+
 impl Server {
     pub fn new<A: std::net::ToSocketAddrs>(addr: A) -> Self {
         Self {
@@ -173,26 +194,50 @@ impl Server {
                 .expect("failed to resolve address!")
                 .next()
                 .expect("no valid addresses?"),
-            routes: HashMap::new(),
+            routes: Arc::new(HashMap::new()),
         }
     }
     pub fn add_route(&mut self, method: Method, route: &str, handler: Handler) {
-        self.routes.insert((method, route.to_string()), handler);
+        Arc::get_mut(&mut self.routes)
+            .unwrap()
+            .insert((method, route.to_string()), handler);
     }
 
-    // fn route_static(path: &str) -> Response {
-    //     Response::new()
-    // }
-    // pub fn add_route_static(&mut self, route: &str, path: &str) {
-    //     self.routes.insert((Method::GET, route.to_string()), );
-    // }
+    pub fn add_route_static(&mut self, route: &str, path: &str) {
+        let path = path.to_string();
+        Arc::get_mut(&mut self.routes).unwrap().insert(
+            (Method::GET, route.to_string()),
+            Box::new(move |req: &Request| {
+                let slice = &req.route[(path.len())..(req.route.len())];
+                let mut fpath = Path::new(&path).join(slice);
+                if fpath.is_dir() {
+                    fpath = fpath.join("index.html");
+                };
+
+                println!("{:?}", fpath.join(slice));
+                let mut file = if let Ok(file) = File::open(fpath) {
+                    file
+                } else {
+                    return Response::new_404();
+                };
+
+                let mut contents = String::new();
+                file.read_to_string(&mut contents).unwrap();
+
+                let mut res = Response::new();
+                res.set_body_html(&mut contents);
+                res
+            }),
+        );
+    }
+
     pub fn serve(&self) -> Result<(), std::io::Error> {
         // let total = Arc::new(AtomicUsize::new(0));
         let listener = TcpListener::bind(self.addr)?;
         let pool = threadpool::ThreadPool::new(4);
         for sopt in listener.incoming() {
             let mut stream = sopt?;
-            let routes = self.routes.clone();
+            let routes = Arc::clone(&self.routes);
 
             pool.execute(move || {
                 let request = match Request::from_stream(&mut stream) {
@@ -204,13 +249,20 @@ impl Server {
                         return;
                     }
                 };
+                let route = routes.keys().find(|(method, path)| {
+                    if *method != request.method {
+                        return false;
+                    }
+                    let pattern = format!("^{}$", regex::escape(path).replace(r"\*", ".*"));
+                    let re = Regex::new(&pattern).unwrap();
+                    re.is_match(&request.route)
+                });
 
-                if let Some(handler) = routes.get(&(request.method.clone(), request.route.clone()))
-                {
+                if let Some((method, path)) = route {
+                    let handler = routes.get(&(method.clone(), path.clone())).unwrap();
                     handler(&request).write_to(&mut stream).unwrap();
                 } else {
-                    let _ = stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n");
-                    let _ = stream.flush();
+                    Response::new_404().write_to(&mut stream).unwrap();
                 }
             });
         }
@@ -219,23 +271,3 @@ impl Server {
 }
 
 type Headers = HashMap<String, String>;
-
-// fn main() -> std::io::Result<()> {
-//     let mut router = Router::new();
-//     router.add_route(Method::GET, "/hello", |request| {
-//         let mut res = Response::new();
-//         res.body = Some(
-//             json!({
-//                 "message": "hi",
-//                 "ip": request.peer_addr
-//             })
-//             .to_string(),
-//         );
-//         res.set_header("Content-Type", "text/json");
-//         res
-//     });
-//
-//     router.serve().unwrap();
-//
-//     Ok(())
-// }
