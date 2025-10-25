@@ -1,4 +1,4 @@
-use catfur::{Method, Response, Server};
+use catfur::{meta::Method, request::Request, response::Response, server::Server};
 
 fn main() -> std::io::Result<()> {
     let mut router = Server::new("localhost:8080");
@@ -7,7 +7,7 @@ fn main() -> std::io::Result<()> {
     router.add_route(
         Method::GET,
         "/hello",
-        Box::new(|req: &catfur::Request| {
+        Box::new(|req: &Request| {
             let mut res = Response::new();
             let body = (format!("hiiii!!! ur ip is {}", req.peer_addr)).to_string();
             res.set_body_plain(&body);

@@ -5,15 +5,18 @@ the api is really simple and straightforward
 
 you can use two ways of making servers
 
-## the builder pattern
+**the builder pattern**
 ```rust
-use catfur::builders::{ResponseBuilder, ServerBuilder};
+use catfur::{
+    builders::{ResponseBuilder, ServerBuilder},
+    request::Request,
+};
 
 fn main() -> std::io::Result<()> {
     ServerBuilder::new("localhost:8080")
         .get(
             "/hello",
-            Box::new(|req: &catfur::Request| {
+            Box::new(|req: &Request| {
                 ResponseBuilder::ok()
                     .body(format!("hiiii!!! ur ip is {}", req.peer_addr).into())
                     .build()
@@ -23,27 +26,34 @@ fn main() -> std::io::Result<()> {
         .build()
         .serve()
 }
-
 ```
 
-## procedural way
+**procedural way**
 ```rust
-use catfur::{Method, Response, Server};
+
+use catfur::{meta::Method, request::Request, response::Response, server::Server};
 
 fn main() -> std::io::Result<()> {
     let mut router = Server::new("localhost:8080");
     println!("serving on localhost:8080");
 
-    router.add_route(Method::GET, "/hello", |request| {
-        let mut res = Response::new();
-        let body = (format!("hiiii!!! ur ip is {}", request.peer_addr)).to_string();
-        res.set_body_plain(&body);
-        res
-    });
+    router.add_route(
+        Method::GET,
+        "/hello",
+        Box::new(|req: &Request| {
+            let mut res = Response::new();
+            let body = (format!("hiiii!!! ur ip is {}", req.peer_addr)).to_string();
+            res.set_body_plain(&body);
+            res
+        }),
+    );
+
+    router.add_route_static("/static/*", "./static");
 
     router.serve().unwrap();
     Ok(())
 }
+
 ```
 both examples are in the `examples/` directory
 
