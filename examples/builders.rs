@@ -1,33 +1,26 @@
-use std::time::SystemTime;
-
 use catfur::{
-    builders::{ResponseBuilder, ServerBuilder},
-    meta::{Handler},
-    request::Request,
+    builders::{ResponseBuilder, ServerBuilder}, middleware, request::Request
 };
 
 fn main() -> std::io::Result<()> {
     ServerBuilder::new("localhost:8080")
-        .mw(logger)
+        .mw(middleware::cors)
+        .mw(middleware::logger)
         .get("/hello", |req: &Request| {
             ResponseBuilder::ok()
-                .body(format!("hiiii!!! ur ip is {}", req.peer_addr).into())
+                .text(format!("hiiii!!! ur ip is {}", req.peer_addr,))
+                .build()
+        })
+        .get("/user/(?name*)", |req: &Request| {
+            ResponseBuilder::ok()
+                .text(format!(
+                    "hiiii!!! ur ip is {} and yr name is {}",
+                    req.peer_addr,
+                    req.get_param("name").unwrap()
+                ))
                 .build()
         })
         .static_route("/static/(?file*)", "./examples/static")
         .build()
         .serve()
-}
-
-fn logger(handler: Handler) -> Handler {
-    Box::new(move |req: &Request| {
-        println!("got request: {:?}", req);
-        let start = SystemTime::now();
-        let res = handler(req);
-        println!("sent response: {:?}", res);
-        let elapsed = start.elapsed().unwrap();
-        println!("request took {:?}", elapsed);
-
-        res
-    })
 }

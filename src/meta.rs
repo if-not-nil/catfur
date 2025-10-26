@@ -21,6 +21,20 @@ pub enum Method {
     DELETE,
 }
 
+impl Method {
+    pub fn to_string(&self) -> String {
+        String::from(match self {
+            Method::GET => "GET",
+            Method::POST => "POST",
+            Method::HEAD => "HEAD",
+            Method::OPTIONS => "OPTIONS",
+            Method::PUT => "PUT",
+            Method::PATCH => "PATCH",
+            Method::DELETE => "DELETE",
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum StatusCode {
     Ok = 200,

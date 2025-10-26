@@ -1,21 +1,26 @@
 use std::{
-    any::Any, collections::HashMap, io::Read, net::{SocketAddr, TcpStream}
+    collections::HashMap,
+    io::Read,
+    net::{SocketAddr, TcpStream},
 };
 
 use crate::meta::{Headers, Method};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Request {
     pub method: Method,
     pub route: String,
     pub headers: Headers,
     pub body: String,
     pub peer_addr: SocketAddr,
-    pub context: HashMap<String, Box<dyn Any + Send + Sync>>,
-    pub path_params: HashMap<String, String>
+    pub context: HashMap<String, String>,
+    pub path_params: HashMap<String, String>,
 }
 
 impl Request {
+    pub fn get_param(&self, key: &str) -> Option<&str> {
+        self.path_params.get(key).map(|s| s.as_str())
+    }
     pub fn from_stream(stream: &mut TcpStream) -> Result<Self, std::io::Error> {
         // headers
         let mut buf = Vec::new();
@@ -85,7 +90,7 @@ impl Request {
             method,
             route,
             peer_addr: stream.peer_addr().unwrap(),
-            path_params: HashMap::new()
+            path_params: HashMap::new(),
         })
     }
 }

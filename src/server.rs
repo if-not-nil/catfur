@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::{Read},
+    io::Read,
     net::{SocketAddr, TcpListener},
     path::Path,
     sync::Arc,
@@ -11,14 +11,15 @@ use regex::Regex;
 
 use crate::{
     meta::{Handler, Method, StatusCode},
+    middleware::Middleware,
     request::Request,
     response::*,
     threadpool,
 };
 
 pub struct Server {
-    routes: Arc<HashMap<(Method, String), Handler>>,
-    middleware: Vec<Box<dyn Fn(Handler) -> Handler>>,
+    routes: Arc<HashMap<(Method, String), Arc<Handler>>>,
+    middleware: Arc<Vec<Middleware>>,
     addr: SocketAddr,
 }
 
@@ -61,7 +62,12 @@ fn route_to_regex(path: &str) -> (Regex, Vec<String>) {
     }
 
     pattern.push('$');
-    (Regex::new(&pattern).unwrap(), param_names)
+    (
+        Regex::new(&pattern).expect(
+            "invalid route regex. it can only contain named parameters. example: /users/(?id*)",
+        ),
+        param_names,
+    )
 }
 
 impl Server {
@@ -73,27 +79,27 @@ impl Server {
                 .next()
                 .expect("no valid addresses?"),
             routes: Arc::new(HashMap::new()),
-            middleware: Vec::new(),
+            middleware: Arc::new(Vec::new()),
         }
     }
     pub fn add_middleware<F>(&mut self, mw: F)
     where
         F: Fn(Handler) -> Handler + Send + Sync + 'static,
     {
-        self.middleware.push(Box::new(mw))
+        Arc::get_mut(&mut self.middleware)
+            .expect("cannot add middleware after cloning")
+            .push(Box::new(mw))
     }
 
+    // do not call this after calling serve()
     pub fn add_route<F>(&mut self, method: Method, route: &str, handler: F)
     where
         F: Fn(&Request) -> Response + Send + Sync + 'static,
     {
-        let mut h: Handler = Box::new(handler);
-        for mw in &self.middleware {
-            h = mw(h);
-        }
+        let h: Handler = Box::new(handler);
         Arc::get_mut(&mut self.routes)
             .unwrap()
-            .insert((method, route.to_string()), h);
+            .insert((method, route.to_string()), Arc::new(h));
     }
 
     pub fn add_route_static(&mut self, route: &str, path: &str) {
@@ -103,7 +109,7 @@ impl Server {
         }
         Arc::get_mut(&mut self.routes).unwrap().insert(
             (Method::GET, route.into()),
-            Box::new(move |req: &Request| {
+            Arc::new(Box::new(move |req: &Request| {
                 let slice = req
                     .path_params
                     .get("file")
@@ -125,18 +131,20 @@ impl Server {
 
                 let res = Response::new_html(contents);
                 res
-            }),
+            })),
         );
     }
 
     pub fn serve(&self) -> Result<(), std::io::Error> {
         let listener = TcpListener::bind(self.addr)?;
+        // TODO: replace with num_cpus
         let pool = threadpool::ThreadPool::new(8);
         crate::meta::print_banner(self.addr.to_string(), 8);
 
         for stream in listener.incoming() {
             let mut stream = stream?;
             let routes = Arc::clone(&self.routes);
+            let middleware = Arc::clone(&self.middleware);
 
             pool.execute(move || {
                 let mut request = match Request::from_stream(&mut stream) {
@@ -167,19 +175,27 @@ impl Server {
                     }
                 });
 
-                if let Some((path, _)) = matched_route {
-                    // call the handler
+                let base_handler: Handler = if let Some((path, _)) = matched_route {
                     if let Some(handler) = routes.get(&(request.method.clone(), path)) {
-                        if let Err(err) = handler(&request).write_to(&mut stream) {
-                            eprintln!("failed to write response: {}", err);
-                        }
+                        let base_handler = Arc::clone(handler);
+                        Box::new(move |req: &Request| base_handler(req))
                     } else {
-                        // should never happen but fallback
-                        let _ = Response::new_err(StatusCode::NotFound).write_to(&mut stream);
+                        Box::new(|_req: &Request| Response::new_err(StatusCode::NotFound))
                     }
                 } else {
-                    // actual 404
-                    let _ = Response::new_err(StatusCode::NotFound).write_to(&mut stream);
+                    Box::new(|_req: &Request| Response::new_err(StatusCode::NotFound))
+                };
+
+                // middleware
+                let mut h: Handler = base_handler;
+                for mw in middleware.iter() {
+                    h = mw(h);
+                }
+
+                let response = h(&request);
+
+                if let Err(err) = response.write_to(&mut stream) {
+                    eprintln!("failed to write response: {}", err);
                 }
             });
         }
