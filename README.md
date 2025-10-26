@@ -70,4 +70,4 @@ Requests/sec:  24835.55
 Transfer/sec:      2.68MB
 ```
 
-
+sse is not ready yet, you shouldnt use it
