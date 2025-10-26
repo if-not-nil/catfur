@@ -21,8 +21,10 @@ fn main() -> std::io::Result<()> {
 
 fn logger(handler: Handler) -> Handler {
     Box::new(move |req: &Request| {
+        println!("got request: {:?}", req);
         let start = SystemTime::now();
         let res = handler(req);
+        println!("sent response: {:?}", res);
         let elapsed = start.elapsed().unwrap();
         println!("request took {:?}", elapsed);
 

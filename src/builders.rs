@@ -1,20 +1,20 @@
 use std::collections::HashMap;
 
 use crate::{
-    meta::{Handler, Headers, Method},
+    meta::{Handler, Headers, Method, StatusCode},
     request::Request,
     response::*,
     server::Server,
 };
 
 pub struct ResponseBuilder {
-    status: u16,
+    status: StatusCode,
     headers: Headers,
     body: Option<String>,
 }
 
 impl ResponseBuilder {
-    pub fn new(status: u16) -> Self {
+    pub fn new(status: StatusCode) -> Self {
         Self {
             status,
             headers: HashMap::new(),
@@ -22,7 +22,7 @@ impl ResponseBuilder {
         }
     }
     pub fn ok() -> Self {
-        ResponseBuilder::new(200)
+        ResponseBuilder::new(StatusCode::Ok)
     }
     pub fn body(mut self, body: String) -> Self {
         self.body = Some(body);

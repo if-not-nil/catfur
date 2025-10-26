@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::{Read, Write},
+    io::{stdout, Read, Write},
     net::{SocketAddr, TcpListener},
     path::Path,
     sync::Arc,
@@ -10,7 +10,7 @@ use std::{
 use regex::Regex;
 
 use crate::{
-    meta::{Handler, Method},
+    meta::{Handler, Method, StatusCode},
     request::Request,
     response::*,
     threadpool,
@@ -64,6 +64,11 @@ fn route_to_regex(path: &str) -> (Regex, Vec<String>) {
     (Regex::new(&pattern).unwrap(), param_names)
 }
 
+fn print_banner(host: SocketAddr) {
+    _ = stdout().write_all(&format!("catfur: serving at {host}").into_bytes());
+    _ = stdout().flush();
+}
+
 impl Server {
     pub fn new<A: std::net::ToSocketAddrs>(addr: A) -> Self {
         Self {
@@ -104,7 +109,6 @@ impl Server {
         Arc::get_mut(&mut self.routes).unwrap().insert(
             (Method::GET, route.into()),
             Box::new(move |req: &Request| {
-                println!("{:?}", req);
                 let slice = req
                     .path_params
                     .get("file")
@@ -118,13 +122,14 @@ impl Server {
 
                 let mut file = match File::open(&fpath) {
                     Ok(f) => f,
-                    Err(_) => return Response::new_404(),
+                    Err(_) => return Response::new_err(StatusCode::NotFound),
                 };
 
                 let mut contents = String::new();
                 file.read_to_string(&mut contents).unwrap();
 
-                Response::new_html(contents)
+                let res = Response::new_html(contents);
+                res
             }),
         );
     }
@@ -132,6 +137,7 @@ impl Server {
     pub fn serve(&self) -> Result<(), std::io::Error> {
         let listener = TcpListener::bind(self.addr)?;
         let pool = threadpool::ThreadPool::new(8);
+        print_banner(self.addr);
 
         for stream in listener.incoming() {
             let mut stream = stream?;
@@ -142,8 +148,7 @@ impl Server {
                     Ok(req) => req,
                     Err(err) => {
                         eprintln!("failed to parse request: {}", err);
-                        let _ = Response::new_404().write_to(&mut stream); // TODO: replace with
-                        // 400
+                        let _ = Response::new_err(StatusCode::BadRequest).write_to(&mut stream);
                         return;
                     }
                 };
@@ -175,11 +180,11 @@ impl Server {
                         }
                     } else {
                         // should never happen but fallback
-                        let _ = Response::new_404().write_to(&mut stream);
+                        let _ = Response::new_err(StatusCode::NotFound).write_to(&mut stream);
                     }
                 } else {
                     // actual 404
-                    let _ = Response::new_404().write_to(&mut stream);
+                    let _ = Response::new_err(StatusCode::NotFound).write_to(&mut stream);
                 }
             });
         }

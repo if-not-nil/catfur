@@ -17,6 +17,42 @@ pub enum Method {
     DELETE,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum StatusCode {
+    Ok = 200,
+    BadRequest = 400,
+    NotFound = 404,
+    MethodNotAllowed = 405,
+    InternalServerError = 500,
+    NotImplemented = 501,
+}
+
+impl StatusCode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            StatusCode::Ok => "200 OK",
+            StatusCode::BadRequest => "400 Bad Request",
+            StatusCode::NotFound => "404 Not Found",
+            StatusCode::MethodNotAllowed => "405 Method Not Allowed",
+            StatusCode::InternalServerError => "500 Internal Server Error",
+            StatusCode::NotImplemented => "501 Not Implemented",
+        }
+    }
+}
+impl From<u16> for StatusCode {
+    fn from(code: u16) -> Self {
+        match code {
+            200 => StatusCode::Ok,
+            400 => StatusCode::BadRequest,
+            404 => StatusCode::NotFound,
+            405 => StatusCode::MethodNotAllowed,
+            500 => StatusCode::InternalServerError,
+            501 => StatusCode::NotImplemented,
+            _ => StatusCode::InternalServerError,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParseMethodError;
 

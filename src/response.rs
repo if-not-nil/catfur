@@ -1,10 +1,10 @@
 use std::{collections::HashMap, io::Write, net::TcpStream};
 
-use crate::meta::Headers;
+use crate::meta::{Headers, StatusCode};
 
 #[derive(Debug)]
 pub struct Response {
-    pub(crate) status: u16,
+    pub(crate) status: StatusCode,
     pub(crate) headers: Headers,
     pub(crate) body: Option<String>,
 }
@@ -12,24 +12,24 @@ pub struct Response {
 impl Response {
     pub fn new() -> Self {
         let mut s = Self {
-            status: 200,
+            status: 200.into(),
             headers: HashMap::new(),
             body: None,
         };
         s.set_header("Connection", "close");
         s
     }
-    pub fn new_404() -> Self {
+    pub fn new_err(err: StatusCode) -> Self {
         let mut s = Self {
-            status: 404,
+            status: err,
             headers: HashMap::new(),
             body: None,
         };
         s.set_header("Connection", "close");
-        s.set_body_plain("not found!".to_string());
+        s.set_body_plain(err.as_str().into());
         s
     }
-    
+
     pub fn new_html(s: String) -> Response {
         let mut res = Response::new();
         res.set_body_html(s);
@@ -54,24 +54,32 @@ impl Response {
         _ = self.headers.insert(key.to_string(), val.to_string());
     }
 
-    pub fn write_to(&self, stream: &mut TcpStream) -> std::io::Result<()> {
-        let status_line = match self.status {
-            200 => "HTTP/1.1 200 OK",
-            404 => "HTTP/1.1 404 Not Found",
-            500 => "HTTP/1.1 500 Internal Server Error",
-            _ => "HTTP/1.1 200 OK",
-        };
-        let mut res = format!("{}\r\n", status_line);
-        for (k, v) in &self.headers {
-            res.push_str(format!("{}: {}\r\n", k.as_str(), v.as_str()).as_str());
+    pub fn write_to(&mut self, stream: &mut TcpStream) -> std::io::Result<()> {
+        let body_len = self.body.as_ref().map_or(0, |b| b.len());
+        if !self.headers.contains_key("Content-Length") {
+            self.set_header("Content-Length", &body_len.to_string());
         }
 
-        if let Some(body) = &self.body {
-            res.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
-            res.push_str(body.as_str());
+        let mut res = format!("HTTP/1.1 {}\r\n", self.status.as_str());
+
+        for (k, v) in &self.headers {
+            res.push_str(&format!("{}: {}\r\n", k, v));
         }
+
+        res.push_str("\r\n");
+
+        if let Some(body) = &self.body {
+            res.push_str(body);
+        }
+
         stream.write_all(res.as_bytes())?;
         stream.flush()?;
         Ok(())
+    }
+}
+
+impl Default for Response {
+    fn default() -> Self {
+        Self::new()
     }
 }
