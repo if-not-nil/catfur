@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     meta::{Handler, Headers, Method},
+    request::Request,
     response::*,
     server::Server,
 };
@@ -51,15 +52,30 @@ impl ServerBuilder {
         }
     }
 
-    pub fn route(mut self, method: Method, route: &str, handler: Handler) -> Self {
+    pub fn mw<F>(mut self, ware: F) -> Self
+    where
+        F: Fn(Handler) -> Handler + Send + Sync + 'static,
+    {
+        self.server.add_middleware(ware);
+        self
+    }
+    pub fn route<F>(mut self, method: Method, route: &str, handler: F) -> Self
+    where
+        F: Fn(&Request) -> Response + Send + Sync + 'static,
+    {
         self.server.add_route(method, route, handler);
         self
     }
-    pub fn get(mut self, route: &str, handler: Handler) -> Self {
-        self.server.add_route(Method::GET, route, handler);
-        self
+    pub fn get<F>(self, route: &str, handler: F) -> Self
+    where
+        F: Fn(&Request) -> Response + Send + Sync + 'static,
+    {
+        self.route(Method::GET, route, handler)
     }
-    pub fn post(mut self, route: &str, handler: Handler) -> Self {
+    pub fn post<F>(mut self, route: &str, handler: F) -> Self
+    where
+        F: Fn(&Request) -> Response + Send + Sync + 'static,
+    {
         self.server.add_route(Method::POST, route, handler);
         self
     }

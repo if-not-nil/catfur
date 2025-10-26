@@ -1,13 +1,18 @@
-use std::{collections::HashMap, io::Read, net::{SocketAddr, TcpStream}};
+use std::{
+    any::Any, collections::HashMap, io::Read, net::{SocketAddr, TcpStream}
+};
 
 use crate::meta::{Headers, Method};
 
+#[derive(Debug)]
 pub struct Request {
     pub method: Method,
     pub route: String,
     pub headers: Headers,
     pub body: String,
     pub peer_addr: SocketAddr,
+    pub context: HashMap<String, Box<dyn Any + Send + Sync>>,
+    pub path_params: HashMap<String, String>
 }
 
 impl Request {
@@ -74,11 +79,13 @@ impl Request {
         let route = route_str.to_string();
 
         Ok(Request {
+            context: HashMap::new(),
             headers,
             body,
             method,
             route,
             peer_addr: stream.peer_addr().unwrap(),
+            path_params: HashMap::new()
         })
     }
 }

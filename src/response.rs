@@ -2,6 +2,7 @@ use std::{collections::HashMap, io::Write, net::TcpStream};
 
 use crate::meta::Headers;
 
+#[derive(Debug)]
 pub struct Response {
     pub(crate) status: u16,
     pub(crate) headers: Headers,
@@ -25,20 +26,26 @@ impl Response {
             body: None,
         };
         s.set_header("Connection", "close");
-        s.set_body_plain(&"not found!".to_string());
+        s.set_body_plain("not found!".to_string());
         s
     }
+    
+    pub fn new_html(s: String) -> Response {
+        let mut res = Response::new();
+        res.set_body_html(s);
+        res
+    }
 
-    pub fn set_body_json(self: &mut Response, s: &String) {
+    pub fn set_body_json(self: &mut Response, s: String) {
         self.body = Some(s.into());
         self.set_header("Content-Type", "text/json");
     }
-    pub fn set_body_plain(self: &mut Response, s: &String) {
+    pub fn set_body_plain(self: &mut Response, s: String) {
         self.body = Some(s.into());
         self.set_header("Content-Type", "text/plain");
     }
 
-    pub fn set_body_html(self: &mut Response, s: &String) {
+    pub fn set_body_html(self: &mut Response, s: String) {
         self.body = Some(s.into());
         self.set_header("Content-Type", "text/html");
     }
