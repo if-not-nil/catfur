@@ -14,7 +14,7 @@ fn main() -> std::io::Result<()> {
                 .body(format!("hiiii!!! ur ip is {}", req.peer_addr).into())
                 .build()
         })
-        .static_route(r"/static/(?file*)", "./examples/static")
+        .static_route("/static/(?file*)", "./examples/static")
         .build()
         .serve()
 }

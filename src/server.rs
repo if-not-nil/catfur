@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::{stdout, Read, Write},
+    io::{Read},
     net::{SocketAddr, TcpListener},
     path::Path,
     sync::Arc,
@@ -62,11 +62,6 @@ fn route_to_regex(path: &str) -> (Regex, Vec<String>) {
 
     pattern.push('$');
     (Regex::new(&pattern).unwrap(), param_names)
-}
-
-fn print_banner(host: SocketAddr) {
-    _ = stdout().write_all(&format!("catfur: serving at {host}").into_bytes());
-    _ = stdout().flush();
 }
 
 impl Server {
@@ -137,7 +132,7 @@ impl Server {
     pub fn serve(&self) -> Result<(), std::io::Error> {
         let listener = TcpListener::bind(self.addr)?;
         let pool = threadpool::ThreadPool::new(8);
-        print_banner(self.addr);
+        crate::meta::print_banner(self.addr.to_string(), 8);
 
         for stream in listener.incoming() {
             let mut stream = stream?;
