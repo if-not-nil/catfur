@@ -35,40 +35,40 @@ impl Method {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum StatusCode {
-    Ok = 200,
-    BadRequest = 400,
-    NotFound = 404,
-    MethodNotAllowed = 405,
-    InternalServerError = 500,
-    NotImplemented = 501,
+macro_rules! status_codes {
+    ($($name:ident = $code:literal $reason:literal),* $(,)?) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum StatusCode {
+            $($name = $code),*
+        }
+
+        impl StatusCode {
+            pub fn as_str(&self) -> &'static str {
+                match self {
+                    $(Self::$name => concat!($code, " ", $reason)),*
+                }
+            }
+        }
+
+        impl From<u16> for StatusCode {
+            fn from(code: u16) -> Self {
+                match code {
+                    $($code => Self::$name),*,
+                    _ => Self::InternalServerError,
+                }
+            }
+        }
+    };
 }
 
-impl StatusCode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            StatusCode::Ok => "200 OK",
-            StatusCode::BadRequest => "400 Bad Request",
-            StatusCode::NotFound => "404 Not Found",
-            StatusCode::MethodNotAllowed => "405 Method Not Allowed",
-            StatusCode::InternalServerError => "500 Internal Server Error",
-            StatusCode::NotImplemented => "501 Not Implemented",
-        }
-    }
-}
-impl From<u16> for StatusCode {
-    fn from(code: u16) -> Self {
-        match code {
-            200 => StatusCode::Ok,
-            400 => StatusCode::BadRequest,
-            404 => StatusCode::NotFound,
-            405 => StatusCode::MethodNotAllowed,
-            500 => StatusCode::InternalServerError,
-            501 => StatusCode::NotImplemented,
-            _ => StatusCode::InternalServerError,
-        }
-    }
+status_codes! {
+    Ok = 200 "OK",
+    NoContent = 204 "No Content",
+    BadRequest = 400 "Bad Request",
+    NotFound = 404 "Not Found",
+    MethodNotAllowed = 405 "Method Not Allowed",
+    InternalServerError = 500 "Internal Server Error",
+    NotImplemented = 501 "Not Implemented",
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -105,10 +105,13 @@ pub fn print_banner(host: String, thread_num: usize) {
  <`-....__.'   {}
             {}\n",
         esc_banner,
-        make_line(format!("cf \x1b[33m\x1b[1mv0.0.1")),
+        make_line(format!(
+            "cf \x1b[33m\x1b[1mv{version}",
+            version = env!("CARGO_PKG_VERSION")
+        )),
         make_line(format!("serving at")),
-        make_line(format!("{}", host)),
-        make_line(format!("on {} threads", thread_num)),
+        make_line(format!("{host}")),
+        make_line(format!("on {thread_num} threads")),
         esc_reset
     );
     _ = stdout().write_all(&banner.into_bytes());

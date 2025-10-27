@@ -1,9 +1,6 @@
 use std::{collections::HashMap, io::Write, net::TcpStream};
 
-use crate::{
-    builders::ResponseBuilder,
-    meta::{Headers, StatusCode},
-};
+use crate::meta::{Headers, StatusCode};
 
 pub enum Body {
     Text(String),
@@ -28,43 +25,80 @@ pub struct Response {
     pub body: Option<Body>,
 }
 
-// not sure how i feel about having a weird response-responsebuilder relationship
 impl Response {
-    pub fn new() -> Self {
-        let mut s = Self {
+    // base
+    pub fn text(s: impl Into<String>) -> Self {
+        Self::new_with_body(Body::Text(s.into())).header("Content-Type", "text/plain")
+    }
+
+    pub fn html(s: impl Into<String>) -> Self {
+        Self::new_with_body(Body::Text(s.into())).header("Content-Type", "text/html")
+    }
+
+    pub fn json(s: impl Into<String>) -> Self {
+        Self::new_with_body(Body::Text(s.into())).header("Content-Type", "application/json")
+    }
+
+    pub fn bytes(bytes: Vec<u8>, content_type: &str) -> Self {
+        Self::new_with_body(Body::Bytes(bytes)).header("Content-Type", content_type)
+    }
+
+    pub fn stream(
+        func: impl Fn(&mut TcpStream) -> std::io::Result<()> + Send + Sync + 'static,
+    ) -> Self {
+        // no length, force close after write
+        Self {
             status: StatusCode::Ok,
+            headers: [("Connection".into(), "close".into())].into(),
+            body: Some(Body::Stream(Box::new(func))),
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            status: StatusCode::NoContent,
             headers: HashMap::new(),
             body: None,
-        };
-        s.set_header("Connection", "keep-alive");
-        s
+        }
     }
 
-    pub fn new_err(status: StatusCode) -> Self {
-        ResponseBuilder::new(status).text(status.as_str()).build()
+    pub fn error(status: StatusCode) -> Self {
+        Self::text(status.as_str()).status(status)
     }
 
-    pub fn new_html(s: impl Into<String>) -> Self {
-        ResponseBuilder::ok()
-            .text(s)
-            .header("Content-Type", "text/html")
-            .build()
+    // modifiers
+
+    pub fn status(mut self, status: StatusCode) -> Self {
+        self.status = status;
+        self
     }
 
-    pub fn new_bytes(bytes: Vec<u8>, content_type: &str) -> Self {
-        ResponseBuilder::ok().bytes(bytes, content_type).build()
+    pub fn header(mut self, key: impl Into<String>, val: impl Into<String>) -> Self {
+        self.headers.insert(key.into(), val.into());
+        self
     }
 
-    pub fn new_json(s: impl Into<String>) -> Self {
-        ResponseBuilder::ok().json(s).build()
+    // internal
+
+    fn new_with_body(body: Body) -> Self {
+        Self {
+            status: StatusCode::Ok,
+            headers: HashMap::from([("Connection".into(), "keep-alive".into())]),
+            body: Some(body),
+        }
     }
 
-    pub fn new_text(s: impl Into<String>) -> Self {
-        ResponseBuilder::ok().text(s).build()
-    }
-
-    pub fn set_header(&mut self, key: &str, val: &str) {
-        _ = self.headers.insert(key.to_string(), val.to_string());
+    pub fn finalize(mut self) -> Self {
+        if let Some(Body::Text(s)) = &self.body {
+            self.headers
+                .entry("Content-Length".into())
+                .or_insert(s.as_bytes().len().to_string());
+        } else if let Some(Body::Bytes(b)) = &self.body {
+            self.headers
+                .entry("Content-Length".into())
+                .or_insert(b.len().to_string());
+        }
+        self
     }
 
     pub fn write_to(&self, stream: &mut TcpStream) -> std::io::Result<()> {
@@ -72,33 +106,23 @@ impl Response {
         for (k, v) in &self.headers {
             header_str.push_str(&format!("{}: {}\r\n", k, v));
         }
-
         header_str.push_str("\r\n");
         stream.write_all(header_str.as_bytes())?;
         stream.flush()?;
 
         match &self.body {
-            Some(Body::Text(s)) => {
-                stream.write_all(s.as_bytes())?;
-                stream.flush()?;
-            }
-            Some(Body::Bytes(b)) => {
-                stream.write_all(b)?;
-                stream.flush()?;
-            }
-            Some(Body::Stream(func)) => {
-                // streamer controls flush
-                func(stream)?;
-            }
+            Some(Body::Text(s)) => stream.write_all(s.as_bytes())?,
+            Some(Body::Bytes(b)) => stream.write_all(b)?,
+            Some(Body::Stream(func)) => return func(stream),
             None => {}
         }
 
-        Ok(())
+        stream.flush()
     }
 }
 
 impl Default for Response {
     fn default() -> Self {
-        Self::new()
+        Response::text("")
     }
 }

@@ -123,13 +123,13 @@ impl Server {
 
                 let mut file = match File::open(&fpath) {
                     Ok(f) => f,
-                    Err(_) => return Response::new_err(StatusCode::NotFound),
+                    Err(_) => return Response::error(StatusCode::NotFound),
                 };
 
                 let mut contents = String::new();
                 file.read_to_string(&mut contents).unwrap();
 
-                let res = Response::new_html(contents);
+                let res = Response::html(contents);
                 res
             })),
         );
@@ -151,7 +151,7 @@ impl Server {
                     Ok(req) => req,
                     Err(err) => {
                         eprintln!("failed to parse request: {}", err);
-                        let _ = Response::new_err(StatusCode::BadRequest).write_to(&mut stream);
+                        let _ = Response::error(StatusCode::BadRequest).write_to(&mut stream);
                         return;
                     }
                 };
@@ -180,10 +180,10 @@ impl Server {
                         let base_handler = Arc::clone(handler);
                         Box::new(move |req: &Request| base_handler(req))
                     } else {
-                        Box::new(|_req: &Request| Response::new_err(StatusCode::NotFound))
+                        Box::new(|_req: &Request| Response::error(StatusCode::NotFound))
                     }
                 } else {
-                    Box::new(|_req: &Request| Response::new_err(StatusCode::NotFound))
+                    Box::new(|_req: &Request| Response::error(StatusCode::NotFound))
                 };
 
                 // middleware
@@ -194,8 +194,12 @@ impl Server {
 
                 let response = h(&request);
 
-                if let Err(err) = response.write_to(&mut stream) {
-                    eprintln!("failed to write response: {}", err);
+                if let Err(err) = response.finalize().write_to(&mut stream) {
+                    match err.kind() {
+                        std::io::ErrorKind::BrokenPipe => {} // client probably disconnected
+                        std::io::ErrorKind::ConnectionReset => {} // client probably disconnected
+                        _ => eprintln!("failed to write response: {}", err),
+                    }
                 }
             });
         }

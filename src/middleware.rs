@@ -25,9 +25,8 @@ pub fn logger(handler: Handler) -> Handler {
 
 pub fn cors(handler: Handler) -> Handler {
     Box::new(move |req: &Request| {
-        let mut res = handler(req);
-        res.set_header("Access-Control-Allow-Origin", "*");
-        res.set_header("Access-Control-Expose-Headers", "Content-Type");
-        res
+        handler(req)
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Expose-Headers", "Content-Type")
     })
 }
