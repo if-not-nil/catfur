@@ -40,22 +40,6 @@ impl Response {
         s
     }
 
-    pub fn new_sse<F>(streamer: F) -> Response
-    where
-        F: Fn(&mut TcpStream) -> std::io::Result<()> + Send + Sync + 'static,
-    {
-        let mut headers = Headers::new();
-        headers.insert("Content-Type".into(), "text/event-stream".into());
-        headers.insert("Cache-Control".into(), "no-cache".into());
-        headers.insert("Connection".into(), "keep-alive".into());
-
-        Response {
-            status: StatusCode::Ok,
-            headers,
-            body: Some(Body::Stream(Box::new(streamer))),
-        }
-    }
-
     pub fn new_err(status: StatusCode) -> Self {
         ResponseBuilder::new(status).text(status.as_str()).build()
     }
@@ -89,18 +73,9 @@ impl Response {
             header_str.push_str(&format!("{}: {}\r\n", k, v));
         }
 
-        if !matches!(self.body, Some(Body::Stream(_))) {
-            let body_bytes = match &self.body {
-                Some(Body::Text(s)) => s.as_bytes().len(),
-                Some(Body::Bytes(b)) => b.len(),
-                Some(Body::Stream(_)) => 0, // will never fire
-                None => 0,
-            };
-            header_str.push_str(&format!("Content-Length: {}\r\n", body_bytes));
-        }
-
         header_str.push_str("\r\n");
         stream.write_all(header_str.as_bytes())?;
+        stream.flush()?;
 
         match &self.body {
             Some(Body::Text(s)) => {
