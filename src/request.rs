@@ -1,7 +1,8 @@
+use async_net::TcpStream;
+use smol::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, Read},
-    net::{SocketAddr, TcpStream},
+    net::SocketAddr,
     sync::{Arc, RwLock},
 };
 
@@ -61,7 +62,7 @@ impl Request {
     pub fn query_param(&self, key: &str) -> Option<&str> {
         self.query_params.get(key).map(|s| s.as_str())
     }
-    pub fn from_stream(stream: &mut TcpStream) -> std::io::Result<Self> {
+    pub async fn from_stream(stream: &mut TcpStream) -> std::io::Result<Self> {
         let peer_addr = stream.peer_addr()?;
         let mut reader = BufReader::new(stream);
         //
@@ -69,7 +70,7 @@ impl Request {
         //
         let (route, method, query_params) = {
             let mut request_line = String::new();
-            reader.read_line(&mut request_line)?;
+            reader.read_line(&mut request_line).await?;
             if request_line.is_empty() {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
@@ -98,7 +99,7 @@ impl Request {
         let mut headers: Headers = HashMap::new();
         loop {
             let mut line = String::new();
-            reader.read_line(&mut line)?;
+            reader.read_line(&mut line).await?;
             let line = line.trim_end();
             if line.is_empty() {
                 break; // end of headers
@@ -118,7 +119,7 @@ impl Request {
 
             let mut body = vec![0u8; content_length];
             if content_length > 0 {
-                reader.read_exact(&mut body)?;
+                reader.read_exact(&mut body).await?;
             };
             body
         };

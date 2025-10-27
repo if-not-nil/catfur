@@ -1,11 +1,14 @@
-use std::{collections::HashMap, io::Write, net::TcpStream};
+use std::{collections::HashMap};
+
+use async_net::TcpStream;
+use smol::{io::AsyncWriteExt};
 
 use crate::meta::{Headers, StatusCode};
 
 pub enum Body {
     Text(String),
     Bytes(Vec<u8>),
-    Stream(Box<dyn Fn(&mut TcpStream) -> std::io::Result<()> + Send + Sync>),
+    Stream(Box<dyn Fn(&mut TcpStream) -> smol::io::Result<()> + Send + Sync>),
 }
 
 impl std::fmt::Debug for Body {
@@ -101,24 +104,25 @@ impl Response {
         self
     }
 
-    pub fn write_to(&self, stream: &mut TcpStream) -> std::io::Result<()> {
+    pub async fn write_to(&self, stream: &mut TcpStream) -> std::io::Result<()> {
         let mut header_str = format!("HTTP/1.1 {}\r\n", self.status.as_str());
         for (k, v) in &self.headers {
             header_str.push_str(&format!("{}: {}\r\n", k, v));
         }
         header_str.push_str("\r\n");
-        stream.write_all(header_str.as_bytes())?;
-        stream.flush()?;
+        stream.write_all(header_str.as_bytes()).await?;
+        stream.flush().await?;
 
         match &self.body {
-            Some(Body::Text(s)) => stream.write_all(s.as_bytes())?,
-            Some(Body::Bytes(b)) => stream.write_all(b)?,
-            Some(Body::Stream(func)) => return func(stream),
+            Some(Body::Text(s)) => stream.write_all(s.as_bytes()).await?,
+            Some(Body::Bytes(b)) => stream.write_all(b).await?,
+            Some(Body::Stream(func)) => func(stream)?,
             None => {}
         }
 
-        stream.flush()
+        stream.flush().await
     }
+
 }
 
 impl Default for Response {

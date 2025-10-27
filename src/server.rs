@@ -1,11 +1,6 @@
-use std::{
-    collections::HashMap,
-    fs::File,
-    io::Read,
-    net::{SocketAddr, TcpListener},
-    path::Path,
-    sync::Arc,
-};
+use async_net::{TcpListener, TcpStream};
+use smol::{fs::File, io::AsyncReadExt};
+use std::{collections::HashMap, net::SocketAddr, path::Path, sync::Arc};
 
 use regex::Regex;
 
@@ -14,7 +9,6 @@ use crate::{
     middleware::Middleware,
     request::Request,
     response::*,
-    threadpool,
 };
 
 pub struct Server {
@@ -102,108 +96,116 @@ impl Server {
             .insert((method, route.to_string()), Arc::new(h));
     }
 
-    pub fn add_route_static(&mut self, route: &str, path: &str) {
-        let path = path.to_string();
-        if !Path::new(&path).exists() {
-            panic!("path specified does not exist: {}", path);
-        }
-        Arc::get_mut(&mut self.routes).unwrap().insert(
-            (Method::GET, route.into()),
-            Arc::new(Box::new(move |req: &Request| {
+pub fn add_route_static(&mut self, route: &str, path: &str) {
+    let path = path.to_string();
+    if !Path::new(&path).exists() {
+        panic!("path specified does not exist: {}", path);
+    }
+
+    Arc::get_mut(&mut self.routes).unwrap().insert(
+        (Method::GET, route.into()),
+        Arc::new(Box::new(move |req: &Request| {
+            let path_clone = path.clone();
+            smol::block_on(async move {
                 let slice = req
                     .path_params
                     .get("file")
                     .map(|s| s.as_str())
                     .unwrap_or("");
-                let mut fpath = Path::new(&path).join(slice);
+                let mut fpath = Path::new(&path_clone).join(slice);
 
                 if fpath.is_dir() {
                     fpath = fpath.join("index.html");
                 }
 
-                let mut file = match File::open(&fpath) {
-                    Ok(f) => f,
-                    Err(_) => return Response::error(StatusCode::NotFound),
-                };
+                match File::open(&fpath).await {
+                    Ok(mut file) => {
+                        let mut contents = String::new();
+                        if let Err(_) = file.read_to_string(&mut contents).await {
+                            return Response::error(StatusCode::InternalServerError);
+                        }
+                        Response::html(contents)
+                    }
+                    Err(_) => Response::error(StatusCode::NotFound),
+                }
+            })
+        })),
+    );
+}
 
-                let mut contents = String::new();
-                file.read_to_string(&mut contents).unwrap();
+    async fn handle_connection(
+        mut stream: TcpStream,
+        routes: Arc<HashMap<(Method, String), Arc<Handler>>>,
+        middleware: Arc<Vec<Middleware>>,
+    ) {
+        let mut request = match Request::from_stream(&mut stream).await {
+            Ok(req) => req,
+            Err(err) => {
+                eprintln!("failed to parse request: {}", err);
+                let _ = Response::error(StatusCode::BadRequest)
+                    .write_to(&mut stream)
+                    .await;
+                return;
+            }
+        };
 
-                let res = Response::html(contents);
-                res
-            })),
-        );
+        let matched_route = routes.keys().find_map(|(method, path)| {
+            if *method != request.method {
+                return None;
+            }
+            let (re, param_names) = route_to_regex(path);
+            if let Some(caps) = re.captures(&request.route) {
+                for (i, name) in param_names.iter().enumerate() {
+                    request
+                        .path_params
+                        .insert(name.clone(), caps[i + 1].to_string());
+                }
+                Some((path.clone(), re))
+            } else {
+                None
+            }
+        });
+
+        let base_handler: Handler = if let Some((path, _)) = matched_route {
+            if let Some(handler) = routes.get(&(request.method.clone(), path)) {
+                let base_handler = Arc::clone(handler);
+                Box::new(move |req: &Request| base_handler(req))
+            } else {
+                Box::new(|_req: &Request| Response::error(StatusCode::NotFound))
+            }
+        } else {
+            Box::new(|_req: &Request| Response::error(StatusCode::NotFound))
+        };
+
+        let mut h: Handler = base_handler;
+        for mw in middleware.iter() {
+            h = mw(h);
+        }
+
+        let response = h(&request);
+        if let Err(err) = response.finalize().write_to(&mut stream).await {
+            match err.kind() {
+                std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset => {}
+                _ => eprintln!("failed to write response: {}", err),
+            }
+        }
     }
 
-    pub fn serve(&self) -> Result<(), std::io::Error> {
-        let listener = TcpListener::bind(self.addr)?;
-        // TODO: replace with num_cpus
-        let pool = threadpool::ThreadPool::new(8);
-        crate::meta::print_banner(self.addr.to_string(), 8);
+    pub fn serve(&self) -> std::io::Result<()> {
+        smol::block_on(self.serve_async())
+    }
 
-        for stream in listener.incoming() {
-            let mut stream = stream?;
+    pub async fn serve_async(&self) -> std::io::Result<()> {
+        let listener = TcpListener::bind(self.addr).await?;
+        println!("Server listening on {}", self.addr);
+
+        loop {
+            let (stream, _) = listener.accept().await?;
+
             let routes = Arc::clone(&self.routes);
             let middleware = Arc::clone(&self.middleware);
 
-            pool.execute(move || {
-                let mut request = match Request::from_stream(&mut stream) {
-                    Ok(req) => req,
-                    Err(err) => {
-                        eprintln!("failed to parse request: {}", err);
-                        let _ = Response::error(StatusCode::BadRequest).write_to(&mut stream);
-                        return;
-                    }
-                };
-
-                let matched_route = routes.keys().find_map(|(method, path)| {
-                    if *method != request.method {
-                        return None;
-                    }
-
-                    let (re, param_names) = route_to_regex(path);
-
-                    if let Some(caps) = re.captures(&request.route) {
-                        for (i, name) in param_names.iter().enumerate() {
-                            request
-                                .path_params
-                                .insert(name.clone(), caps[i + 1].to_string());
-                        }
-                        Some((path.clone(), re))
-                    } else {
-                        None
-                    }
-                });
-
-                let base_handler: Handler = if let Some((path, _)) = matched_route {
-                    if let Some(handler) = routes.get(&(request.method.clone(), path)) {
-                        let base_handler = Arc::clone(handler);
-                        Box::new(move |req: &Request| base_handler(req))
-                    } else {
-                        Box::new(|_req: &Request| Response::error(StatusCode::NotFound))
-                    }
-                } else {
-                    Box::new(|_req: &Request| Response::error(StatusCode::NotFound))
-                };
-
-                // middleware
-                let mut h: Handler = base_handler;
-                for mw in middleware.iter() {
-                    h = mw(h);
-                }
-
-                let response = h(&request);
-
-                if let Err(err) = response.finalize().write_to(&mut stream) {
-                    match err.kind() {
-                        std::io::ErrorKind::BrokenPipe => {} // client probably disconnected
-                        std::io::ErrorKind::ConnectionReset => {} // client probably disconnected
-                        _ => eprintln!("failed to write response: {}", err),
-                    }
-                }
-            });
+            smol::spawn(Self::handle_connection(stream, routes, middleware)).detach();
         }
-
-        Ok(())
     }
 }

@@ -1,4 +1,5 @@
-use std::{io::Write, net::TcpStream};
+use async_net::TcpStream;
+use smol::io::AsyncWriteExt;
 
 use crate::{
     meta::{Headers, StatusCode},
@@ -46,10 +47,10 @@ impl<'a> SseSender<'a> {
         self
     }
 
-    pub fn send(&mut self) -> SseSendResult {
+    pub async fn send(&mut self) -> SseSendResult {
         self.buf.push_str("\n");
 
-        if let Err(e) = self.stream.write_all(self.buf.as_bytes()) {
+        if let Err(e) = self.stream.write_all(self.buf.as_bytes()).await {
             return match e.kind() {
                 // when the client disconnects themselves
                 std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset => {
@@ -59,7 +60,7 @@ impl<'a> SseSender<'a> {
             };
         }
 
-        if let Err(e) = self.stream.flush() {
+        if let Err(e) = self.stream.flush().await {
             return match e.kind() {
                 // when the client disconnects themselves
                 std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset => {

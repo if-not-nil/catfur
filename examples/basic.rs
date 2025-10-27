@@ -1,14 +1,14 @@
 use cf::{meta::Method, request::Request, response::Response, server::Server};
 
 fn main() -> std::io::Result<()> {
-    let mut router = Server::new("localhost:8080");
-    router.add_route(Method::GET, "/hello", |req: &Request| {
+    let mut server = Server::new("localhost:8080");
+    server.add_route(Method::GET, "/hello", |req: &Request| {
         Response::text(format!("hiiii!!! ur ip is {}", req.peer_addr))
     });
 
-    router.add_route_static("/static/*", "./static");
+    server.add_route_static("/static/*", "./examples/static");
 
-    router.serve().unwrap();
+    server.serve().unwrap();
 
     Ok(())
 }
