@@ -8,7 +8,7 @@ fn main() -> std::io::Result<()> {
         .get("/hello", |req: &Request| {
             Response::text(format!("hiiii!!! ur ip is {}", req.peer_addr,))
         })
-        .get("/user/(?name*)", |req: &Request| {
+        .get("/user/{name}", |req: &Request| {
             Response::text(format!(
                 "hiiii!!! ur ip is {} and yr name is {}",
                 req.peer_addr,

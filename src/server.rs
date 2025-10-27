@@ -3,7 +3,7 @@ use smol::{fs::File, io::AsyncReadExt};
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use crate::{
-    meta::{Handler, Method, StatusCode, guess_content_type},
+    meta::{guess_content_type, print_banner, Handler, Method, StatusCode},
     middleware::Middleware,
     request::Request,
     response::*,
@@ -203,7 +203,7 @@ impl Server {
 
     async fn serve_async(&self) -> std::io::Result<()> {
         let listener = TcpListener::bind(self.addr).await?;
-        println!("Server listening on {}", self.addr);
+        print_banner(self.addr.to_string(), 1);
 
         let routes = Arc::clone(&self.routes);
         let middleware = Arc::clone(&self.middleware);
@@ -219,8 +219,13 @@ impl Server {
     }
 
     // chainable methods
-    pub fn at<A: std::net::ToSocketAddrs>(addr: A) -> Self {
-        Server::new(addr)
+    pub fn at(addr: &str) -> Self {
+        let addr = if addr.starts_with(':') {
+            format!("0.0.0.0{}", addr)
+        } else {
+            addr.to_string()
+        };
+        Self::new(addr.as_str())
     }
 
     pub fn mw<F>(mut self, ware: F) -> Self

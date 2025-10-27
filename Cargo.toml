@@ -1,9 +1,8 @@
 [package]
 name = "cf"
-version = "0.0.1-alpha"
+version = "0.0.2-alpha"
 edition = "2024"
 
 [dependencies]
 async-net = "2.0.0"
-regex = "1.12.2"
 smol = "2.0.2"

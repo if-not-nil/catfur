@@ -1,5 +1,8 @@
 use std::{
-    collections::HashMap, io::{stdout, Write}, path::Path, str::FromStr
+    collections::HashMap,
+    io::{Write, stdout},
+    path::Path,
+    str::FromStr,
 };
 
 use crate::{request::Request, response::Response};
@@ -67,7 +70,7 @@ status_codes! {
     NoContent = 204 "No Content",
     ResetContent = 205 "Reset Content",
     PartialContent = 206 "Partial Content",
-    
+
     // 3xx redirection
     MovedPermanently = 301 "Moved Permanently",
     Found = 302 "Found",
@@ -75,7 +78,7 @@ status_codes! {
     NotModified = 304 "Not Modified",
     TemporaryRedirect = 307 "Temporary Redirect",
     PermanentRedirect = 308 "Permanent Redirect",
-    
+
     // 4xx client errors
     BadRequest = 400 "Bad Request",
     Unauthorized = 401 "Unauthorized",
@@ -98,7 +101,7 @@ status_codes! {
     ImATeapot = 418 "I'm a teapot",
     UnprocessableEntity = 422 "Unprocessable Entity",
     TooManyRequests = 429 "Too Many Requests",
-    
+
     // 5xx server errors
     InternalServerError = 500 "Internal Server Error",
     NotImplemented = 501 "Not Implemented",
