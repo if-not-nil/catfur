@@ -1,81 +1,52 @@
 # cf
-<img width="281" height="102" alt="image" src="https://github.com/user-attachments/assets/b2babb54-024f-4b7b-8331-14e8fd7fd5a8" />
-
-an implementation for a http server in rust. works on top of regular sockets and regex
+<img width="400" alt="image" src="https://github.com/user-attachments/assets/4d89570a-460e-4a08-8609-8cbb154cd3e4" />
 
 ## instructions
 ```bash
-git clone (https://github.com/if-not-nil/catfur
+git clone https://github.com/if-not-nil/cf
 cd catfur
 cargo run --example builders
 ```
 
+an implementation for a http server in async rust
+
 the api is really simple and straightforward
 
-you can use two ways of making servers
-
-**the builder pattern**
 ```rust
-use catfur::{
-    builders::{ResponseBuilder, ServerBuilder}, middleware, request::Request
-};
+use cf::{middleware, request::Request, response::Response, server::Server};
 
 fn main() -> std::io::Result<()> {
-    ServerBuilder::new("localhost:8080")
+    Server::at("localhost:8080")
         .mw(middleware::cors)
         .mw(middleware::logger)
+        .get("/hi", |_req| Response::text("hi"))
         .get("/hello", |req: &Request| {
-            ResponseBuilder::ok()
-                .text(format!("hiiii!!! ur ip is {}", req.peer_addr,))
-                .build()
+            Response::text(format!("hiiii!!! ur ip is {}", req.peer_addr,))
         })
-        .get("/user/(?name*)", |req: &Request| {
-            ResponseBuilder::ok()
-                .text(format!(
-                    "hiiii!!! ur ip is {} and yr name is {}",
-                    req.peer_addr,
-                    req.get_param("name").unwrap()
-                ))
-                .build()
+        .get("/user/{name}", |req: &Request| {
+            Response::text(format!(
+                "hiiii!!! ur ip is {} and yr name is {}",
+                req.peer_addr,
+                req.param("name").unwrap()
+            ))
         })
-        .static_route("/static/(?file*)", "./examples/static")
-        .build()
+        .static_route("/static", "./examples/static")
         .serve()
 }
 
 ```
+this and future examples are in the `examples/` directory, the are the only documentation except the source code itself
 
-**procedural way**
-```rust
-use catfur::{meta::Method, request::Request, response::Response, server::Server};
-
-fn main() -> std::io::Result<()> {
-    let mut router = Server::new("localhost:8080");
-    router.add_route(Method::GET, "/hello", |req: &Request| {
-        Response::new_text(format!("hiiii!!! ur ip is {}", req.peer_addr))
-    });
-
-    router.add_route_static("/static/*", "./static");
-
-    router.serve().unwrap();
-
-    Ok(())
-}
-
-```
-both examples are in the `examples/` directory
-
-it can do 20k requests per second on an M1 with a simple route, too
+it can go really fast on an M1
 ```bash
- wrk -t4 -c100 -d5s --header "Connection: close" http://localhost:8080/hello
 Running 5s test @ http://localhost:8080/hello
   4 threads and 100 connections
-^C  Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency     2.18ms    2.40ms  40.33ms   98.80%
-    Req/Sec     6.24k   660.51     6.89k    88.89%
-  44730 requests in 1.80s, 4.82MB read
-Requests/sec:  24835.55
-Transfer/sec:      2.68MB
-```
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     3.01ms    7.66ms  78.94ms   97.15%
+    Req/Sec     6.52k     1.72k   23.55k    89.50%
+  130042 requests in 5.07s, 24.18MB read
+  Socket errors: connect 0, read 130037, write 0, timeout 0
+Requests/sec:  25649.06
+Transfer/sec:      4.77MB
 
-sse is not ready yet, you shouldnt use it
+```
