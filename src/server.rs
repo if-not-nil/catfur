@@ -203,7 +203,7 @@ impl Server {
 
     async fn serve_async(&self) -> std::io::Result<()> {
         let listener = TcpListener::bind(self.addr).await?;
-        print_banner(self.addr.to_string(), 1);
+        print_banner(self.addr.to_string());
 
         let routes = Arc::clone(&self.routes);
         let middleware = Arc::clone(&self.middleware);

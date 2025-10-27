@@ -152,7 +152,7 @@ pub fn guess_content_type(path: &Path) -> &'static str {
     }
 }
 
-pub fn print_banner(host: String, thread_num: usize) {
+pub fn print_banner(host: String) {
     let esc_banner = "\x1b[90m\x1b[1m";
     let esc_reset = "\x1b[97m\x1b[0m";
     fn make_line(input: String) -> String {
@@ -163,7 +163,7 @@ pub fn print_banner(host: String, thread_num: usize) {
   |\\'/-..--.   {}
  / _ _   ,  ;  {}
 `~=`Y'~_<._./  {}
- <`-....__.'   {}
+ <`-....__.'   
             {}\n",
         esc_banner,
         make_line(format!(
@@ -172,7 +172,6 @@ pub fn print_banner(host: String, thread_num: usize) {
         )),
         make_line(format!("serving at")),
         make_line(format!("{host}")),
-        make_line(format!("on {thread_num} threads")),
         esc_reset
     );
     _ = stdout().write_all(&banner.into_bytes());
