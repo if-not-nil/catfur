@@ -1,7 +1,5 @@
 use std::{
-    collections::HashMap,
-    io::{Write, stdout},
-    str::FromStr,
+    collections::HashMap, io::{stdout, Write}, path::Path, str::FromStr
 };
 
 use crate::{request::Request, response::Response};
@@ -62,13 +60,52 @@ macro_rules! status_codes {
 }
 
 status_codes! {
+    // 2xx success
     Ok = 200 "OK",
+    Created = 201 "Created",
+    Accepted = 202 "Accepted",
     NoContent = 204 "No Content",
+    ResetContent = 205 "Reset Content",
+    PartialContent = 206 "Partial Content",
+    
+    // 3xx redirection
+    MovedPermanently = 301 "Moved Permanently",
+    Found = 302 "Found",
+    SeeOther = 303 "See Other",
+    NotModified = 304 "Not Modified",
+    TemporaryRedirect = 307 "Temporary Redirect",
+    PermanentRedirect = 308 "Permanent Redirect",
+    
+    // 4xx client errors
     BadRequest = 400 "Bad Request",
+    Unauthorized = 401 "Unauthorized",
+    PaymentRequired = 402 "Payment Required",
+    Forbidden = 403 "Forbidden",
     NotFound = 404 "Not Found",
     MethodNotAllowed = 405 "Method Not Allowed",
+    NotAcceptable = 406 "Not Acceptable",
+    ProxyAuthenticationRequired = 407 "Proxy Authentication Required",
+    RequestTimeout = 408 "Request Timeout",
+    Conflict = 409 "Conflict",
+    Gone = 410 "Gone",
+    LengthRequired = 411 "Length Required",
+    PreconditionFailed = 412 "Precondition Failed",
+    PayloadTooLarge = 413 "Payload Too Large",
+    UriTooLong = 414 "URI Too Long",
+    UnsupportedMediaType = 415 "Unsupported Media Type",
+    RangeNotSatisfiable = 416 "Range Not Satisfiable",
+    ExpectationFailed = 417 "Expectation Failed",
+    ImATeapot = 418 "I'm a teapot",
+    UnprocessableEntity = 422 "Unprocessable Entity",
+    TooManyRequests = 429 "Too Many Requests",
+    
+    // 5xx server errors
     InternalServerError = 500 "Internal Server Error",
     NotImplemented = 501 "Not Implemented",
+    BadGateway = 502 "Bad Gateway",
+    ServiceUnavailable = 503 "Service Unavailable",
+    GatewayTimeout = 504 "Gateway Timeout",
+    HttpVersionNotSupported = 505 "HTTP Version Not Supported",
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -88,6 +125,27 @@ impl FromStr for Method {
             "DELETE" => Ok(Method::DELETE),
             _ => Err(ParseMethodError),
         }
+    }
+}
+
+pub fn guess_content_type(path: &Path) -> &'static str {
+    match path.extension().and_then(|s| s.to_str()) {
+        Some("html") | Some("htm") => "text/html; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("js") => "application/javascript; charset=utf-8",
+        Some("json") => "application/json; charset=utf-8",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("ico") => "image/x-icon",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        Some("ttf") => "font/ttf",
+        Some("txt") => "text/plain; charset=utf-8",
+        Some("xml") => "application/xml; charset=utf-8",
+        Some("pdf") => "application/pdf",
+        _ => "application/octet-stream",
     }
 }
 
