@@ -1,4 +1,4 @@
-use catfur::{meta::Method, request::Request, response::Response, server::Server};
+use cf::{meta::Method, request::Request, response::Response, server::Server};
 
 fn main() -> std::io::Result<()> {
     let mut router = Server::new("localhost:8080");

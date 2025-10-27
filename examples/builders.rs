@@ -1,4 +1,4 @@
-use catfur::{
+use cf::{
     builders::{ResponseBuilder, ServerBuilder}, middleware, request::Request
 };
 
