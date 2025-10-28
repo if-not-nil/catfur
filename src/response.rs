@@ -1,22 +1,22 @@
-use std::{collections::HashMap};
+use std::{collections::HashMap, pin::Pin};
 
 use async_net::TcpStream;
-use smol::{io::AsyncWriteExt};
+use smol::io::AsyncWriteExt;
 
 use crate::meta::{Headers, StatusCode};
 
 pub enum Body {
     Text(String),
     Bytes(Vec<u8>),
-    Stream(Box<dyn Fn(&mut TcpStream) -> smol::io::Result<()> + Send + Sync>),
 }
+
+pub type ResultFuture<T> = Pin<Box<dyn Future<Output = smol::io::Result<T>> + Send>>;
 
 impl std::fmt::Debug for Body {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Text(arg0) => f.debug_tuple("Text").field(arg0).finish(),
             Self::Bytes(arg0) => f.debug_tuple("Bytes").field(arg0).finish(),
-            Self::Stream(_) => Ok(()),
         }
     }
 }
@@ -44,17 +44,6 @@ impl Response {
 
     pub fn bytes(bytes: Vec<u8>, content_type: &str) -> Self {
         Self::new_with_body(Body::Bytes(bytes)).header("Content-Type", content_type)
-    }
-
-    pub fn stream(
-        func: impl Fn(&mut TcpStream) -> std::io::Result<()> + Send + Sync + 'static,
-    ) -> Self {
-        // no length, force close after write
-        Self {
-            status: StatusCode::Ok,
-            headers: [("Connection".into(), "close".into())].into(),
-            body: Some(Body::Stream(Box::new(func))),
-        }
     }
 
     pub fn empty() -> Self {
@@ -116,13 +105,11 @@ impl Response {
         match &self.body {
             Some(Body::Text(s)) => stream.write_all(s.as_bytes()).await?,
             Some(Body::Bytes(b)) => stream.write_all(b).await?,
-            Some(Body::Stream(func)) => func(stream)?,
             None => {}
         }
 
         stream.flush().await
     }
-
 }
 
 impl Default for Response {
