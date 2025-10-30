@@ -157,9 +157,9 @@ pub fn guess_content_type(path: &Path) -> &'static str {
     }
 }
 
-pub fn print_banner(host: &String) {
+pub fn print_banner(host: &str) {
     fn make_line(input: &str) -> String {
-        ("\x1b[97m\x1b[0m".to_owned() + &input + "\x1b[90m\x1b[1m").into()
+        "\x1b[97m\x1b[0m".to_owned() + input + "\x1b[90m\x1b[1m"
     }
     let esc_banner = "\x1b[90m\x1b[1m";
     let esc_reset = "\x1b[97m\x1b[0m";
@@ -171,7 +171,7 @@ pub fn print_banner(host: &String) {
  <`-....__.'   
             {}\n",
         esc_banner,
-        make_line(&*format!(
+        make_line(&format!(
             "cf \x1b[33m\x1b[1mv{version}",
             version = env!("CARGO_PKG_VERSION")
         )),
