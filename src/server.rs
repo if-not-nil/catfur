@@ -3,10 +3,10 @@ use smol::{fs::File, io::AsyncReadExt};
 use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use crate::{
-    meta::{guess_content_type, print_banner, Handler, Method, StatusCode},
+    meta::{Handler, Method, StatusCode, guess_content_type, print_banner},
     middleware::Middleware,
     request::Request,
-    response::*,
+    response::Response,
 };
 
 pub struct Server {
@@ -43,7 +43,7 @@ impl Server {
     {
         Arc::get_mut(&mut self.middleware)
             .expect("cannot add middleware after cloning")
-            .push(Box::new(mw))
+            .push(Box::new(mw));
     }
 
     // do not call this after calling serve()
@@ -80,15 +80,14 @@ impl Server {
 
         self.add_route(
             Method::GET,
-            &format!("{}/{{filepath}}", route),
+            &format!("{route}/{{filepath}}"),
             move |req: &Request| {
                 let dir_path = dir_path.clone();
 
                 let file_path = req
                     .path_params
                     .get("filepath")
-                    .map(|s| s.as_str())
-                    .unwrap_or("");
+                    .map_or("", String::as_str);
 
                 if file_path.contains("..") {
                     return Response::error(StatusCode::ImATeapot); // pathbuf should protect u
@@ -137,14 +136,15 @@ impl Server {
 
             for (seg, req_seg) in route.segments.iter().zip(req_segments.iter()) {
                 match seg {
-                    RouteSegment::Static(s) if s != req_seg => {
+                    RouteSegment::Static(s) if s != (*req_seg) => {
                         matched = false;
                         break;
                     }
                     RouteSegment::Param(name) => {
-                        params.insert(name.clone(), req_seg.to_string());
+                        params.insert(name.clone(), (*req_seg).to_string());
                     }
-                    _ => {}
+
+                    RouteSegment::Static(_) => {}
                 }
             }
 
@@ -164,7 +164,7 @@ impl Server {
         let mut request = match Request::from_stream(&mut stream).await {
             Ok(req) => req,
             Err(err) => {
-                eprintln!("failed to parse request: {}", err);
+                eprintln!("failed to parse request: {err}");
                 let _ = Response::error(StatusCode::BadRequest)
                     .write_to(&mut stream)
                     .await;
@@ -196,14 +196,14 @@ impl Server {
         if let Err(err) = response.finalize().write_to(&mut stream).await {
             match err.kind() {
                 std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset => {}
-                _ => eprintln!("failed to write response: {}", err),
+                _ => eprintln!("failed to write response: {err}"),
             }
         }
     }
 
     async fn serve_async(&self) -> std::io::Result<()> {
         let listener = TcpListener::bind(self.addr).await?;
-        print_banner(self.addr.to_string());
+        print_banner(&self.addr.to_string());
 
         let routes = Arc::clone(&self.routes);
         let middleware = Arc::clone(&self.middleware);
@@ -221,13 +221,14 @@ impl Server {
     // chainable methods
     pub fn at(addr: &str) -> Self {
         let addr = if addr.starts_with(':') {
-            format!("0.0.0.0{}", addr)
+            format!("0.0.0.0{addr}")
         } else {
             addr.to_string()
         };
         Self::new(addr.as_str())
     }
 
+    #[must_use]
     pub fn mw<F>(mut self, ware: F) -> Self
     where
         F: Fn(Handler) -> Handler + Send + Sync + 'static,
@@ -235,6 +236,8 @@ impl Server {
         self.add_middleware(ware);
         self
     }
+
+    #[must_use]
     pub fn route<F>(mut self, method: Method, route: &str, handler: F) -> Self
     where
         F: Fn(&Request) -> Response + Send + Sync + 'static,
@@ -242,6 +245,8 @@ impl Server {
         self.add_route(method, route, handler);
         self
     }
+
+    #[must_use]
     pub fn get<F>(mut self, route: &str, handler: F) -> Self
     where
         F: Fn(&Request) -> Response + Send + Sync + 'static,
@@ -249,6 +254,8 @@ impl Server {
         self.add_route(Method::GET, route, handler);
         self
     }
+
+    #[must_use]
     pub fn post<F>(mut self, route: &str, handler: F) -> Self
     where
         F: Fn(&Request) -> Response + Send + Sync + 'static,

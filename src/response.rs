@@ -1,4 +1,4 @@
-use std::{collections::HashMap, pin::Pin};
+use std::{collections::HashMap, fmt::Write, pin::Pin};
 
 use async_net::TcpStream;
 use smol::io::AsyncWriteExt;
@@ -60,11 +60,13 @@ impl Response {
 
     // modifiers
 
+    #[must_use]
     pub fn status(mut self, status: StatusCode) -> Self {
         self.status = status;
         self
     }
 
+    #[must_use]
     pub fn header(mut self, key: impl Into<String>, val: impl Into<String>) -> Self {
         self.headers.insert(key.into(), val.into());
         self
@@ -84,7 +86,7 @@ impl Response {
         if let Some(Body::Text(s)) = &self.body {
             self.headers
                 .entry("Content-Length".into())
-                .or_insert(s.as_bytes().len().to_string());
+                .or_insert(s.len().to_string());
         } else if let Some(Body::Bytes(b)) = &self.body {
             self.headers
                 .entry("Content-Length".into())
@@ -96,7 +98,7 @@ impl Response {
     pub async fn write_to(&self, stream: &mut TcpStream) -> std::io::Result<()> {
         let mut header_str = format!("HTTP/1.1 {}\r\n", self.status.as_str());
         for (k, v) in &self.headers {
-            header_str.push_str(&format!("{}: {}\r\n", k, v));
+            write!(&mut header_str, "{}: {}\r\n", k, v).unwrap();
         }
         header_str.push_str("\r\n");
         stream.write_all(header_str.as_bytes()).await?;

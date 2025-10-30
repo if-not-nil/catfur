@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt::Display,
     io::{Write, stdout},
     path::Path,
     str::FromStr,
@@ -22,17 +23,21 @@ pub enum Method {
     DELETE,
 }
 
-impl Method {
-    pub fn to_string(&self) -> String {
-        String::from(match self {
-            Method::GET => "GET",
-            Method::POST => "POST",
-            Method::HEAD => "HEAD",
-            Method::OPTIONS => "OPTIONS",
-            Method::PUT => "PUT",
-            Method::PATCH => "PATCH",
-            Method::DELETE => "DELETE",
-        })
+impl Display for Method {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Method::GET => "GET",
+                Method::POST => "POST",
+                Method::HEAD => "HEAD",
+                Method::OPTIONS => "OPTIONS",
+                Method::PUT => "PUT",
+                Method::PATCH => "PATCH",
+                Method::DELETE => "DELETE",
+            }
+        )
     }
 }
 
@@ -133,12 +138,12 @@ impl FromStr for Method {
 
 pub fn guess_content_type(path: &Path) -> &'static str {
     match path.extension().and_then(|s| s.to_str()) {
-        Some("html") | Some("htm") => "text/html; charset=utf-8",
+        Some("html" | "htm") => "text/html; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
         Some("js") => "application/javascript; charset=utf-8",
         Some("json") => "application/json; charset=utf-8",
         Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("jpg" | "jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
         Some("svg") => "image/svg+xml",
         Some("ico") => "image/x-icon",
@@ -152,12 +157,12 @@ pub fn guess_content_type(path: &Path) -> &'static str {
     }
 }
 
-pub fn print_banner(host: String) {
+pub fn print_banner(host: &String) {
+    fn make_line(input: &str) -> String {
+        ("\x1b[97m\x1b[0m".to_owned() + &input + "\x1b[90m\x1b[1m").into()
+    }
     let esc_banner = "\x1b[90m\x1b[1m";
     let esc_reset = "\x1b[97m\x1b[0m";
-    fn make_line(input: String) -> String {
-        "\x1b[97m\x1b[0m".to_owned() + &input + "\x1b[90m\x1b[1m"
-    }
     let banner = format!(
         "{}
   |\\'/-..--.   {}
@@ -166,12 +171,12 @@ pub fn print_banner(host: String) {
  <`-....__.'   
             {}\n",
         esc_banner,
-        make_line(format!(
+        make_line(&*format!(
             "cf \x1b[33m\x1b[1mv{version}",
             version = env!("CARGO_PKG_VERSION")
         )),
-        make_line(format!("serving at")),
-        make_line(format!("{host}")),
+        make_line("serving at"),
+        make_line(host),
         esc_reset
     );
     _ = stdout().write_all(&banner.into_bytes());

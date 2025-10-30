@@ -11,6 +11,11 @@ use crate::meta::{Headers, Method};
 #[derive(Debug, Clone)]
 pub struct Context(Arc<RwLock<HashMap<String, String>>>);
 
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl Context {
     pub fn new() -> Self {
         Self(Arc::new(RwLock::new(HashMap::new())))
@@ -54,13 +59,13 @@ impl Request {
     pub fn header(&self, key: &str) -> Option<&str> {
         self.headers
             .get(&key.to_ascii_lowercase())
-            .map(|s| s.as_str())
+            .map(String::as_str)
     }
     pub fn param(&self, key: &str) -> Option<&str> {
-        self.path_params.get(key).map(|s| s.as_str())
+        self.path_params.get(key).map(String::as_str)
     }
     pub fn query_param(&self, key: &str) -> Option<&str> {
-        self.query_params.get(key).map(|s| s.as_str())
+        self.query_params.get(key).map(String::as_str)
     }
     pub async fn from_stream(stream: &mut TcpStream) -> std::io::Result<Self> {
         let peer_addr = stream.peer_addr()?;
@@ -76,8 +81,8 @@ impl Request {
                     std::io::ErrorKind::InvalidData,
                     "empty request line",
                 ));
-            };
-            let mut parts = request_line.trim_end().split_whitespace();
+            }
+            let mut parts = request_line.split_whitespace();
             let method_str = parts.next().ok_or_else(|| {
                 std::io::Error::new(std::io::ErrorKind::InvalidData, "missing HTTP method")
             })?;
@@ -106,7 +111,7 @@ impl Request {
             }
             if let Some((name, value)) = line.split_once(':') {
                 headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
-            };
+            }
         }
         //
         // body
@@ -120,7 +125,7 @@ impl Request {
             let mut body = vec![0u8; content_length];
             if content_length > 0 {
                 reader.read_exact(&mut body).await?;
-            };
+            }
             body
         };
         Ok(Request {

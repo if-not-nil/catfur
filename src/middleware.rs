@@ -11,7 +11,7 @@ pub fn logger(handler: Handler) -> Handler {
         let elapsed = start.elapsed().unwrap();
         println!(
             "{} request to {} took {:?}",
-            req.method.to_string(),
+            req.method,
             req.route,
             elapsed
         );
