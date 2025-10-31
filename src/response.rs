@@ -8,10 +8,18 @@ use crate::meta::{Headers, StatusCode};
 pub enum Body {
     Text(String),
     Bytes(Vec<u8>),
-    Stream(Pin<Box<dyn Fn(TcpStream) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>>),
+    Stream(
+        Pin<
+            Box<
+                dyn Fn(TcpStream) -> Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>>
+                    + Send
+                    + Sync,
+            >,
+        >,
+    ),
 }
 
-pub type ResultFuture = Pin<Box<dyn Future<Output = smol::io::Result<()>> + Send>>;
+pub type ResultFuture = Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>>;
 pub type VoidFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 impl std::fmt::Debug for Body {
@@ -51,11 +59,24 @@ impl Response {
 
     pub fn stream<F>(stream: F) -> Self
     where
-        F: Fn(TcpStream) -> VoidFuture + Send + Sync + 'static,
+        F: Fn(TcpStream) -> ResultFuture + Send + Sync + 'static,
     {
         Self::new_with_body(Body::Stream(Box::pin(stream)))
             .header("Transfer-Encoding", "chunked")
+            .header("Content-Type", "text/event-stream")
+            .header("Cache-Control", "no-cache")
             .header("Content-Type", "text/plain")
+    }
+
+    pub fn sse<F, Fut>(f: F) -> Response
+    where
+        F: Fn(SseSink) -> Fut + Send + 'static + std::marker::Sync,
+        Fut: Future<Output = std::io::Result<()>> + Send + 'static,
+    {
+        Response::stream(move |stream| {
+            let sink = SseSink { stream };
+            Box::pin(f(sink))
+        })
     }
 
     pub fn empty() -> Self {
@@ -146,5 +167,31 @@ impl Into<Response> for String {
 impl Into<Response> for &str {
     fn into(self) -> Response {
         Response::text(self)
+    }
+}
+
+pub struct SseSink {
+    stream: smol::net::TcpStream,
+}
+
+impl SseSink {
+    pub async fn send(&mut self, data: &str) -> std::io::Result<()> {
+        // it needs a double newline at the end
+        let payload = format!("data: {}\n\n", data);
+        self.send_chunk(payload.as_bytes()).await
+    }
+
+    pub async fn send_event(&mut self, name: &str, data: impl Into<String>) -> std::io::Result<()> {
+        let payload = format!("event: {}\ndata: {}\n\n", name, data.into());
+        self.send_chunk(payload.as_bytes()).await
+    }
+
+    // internal send bytes and wrap them nicely
+    async fn send_chunk(&mut self, data: &[u8]) -> std::io::Result<()> {
+        let header = format!("{:X}\r\n", data.len());
+        self.stream.write_all(header.as_bytes()).await?;
+        self.stream.write_all(data).await?;
+        self.stream.write_all(b"\r\n").await?;
+        self.stream.flush().await
     }
 }
