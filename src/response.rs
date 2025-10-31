@@ -8,17 +8,8 @@ use crate::meta::{Headers, StatusCode};
 pub enum Body {
     Text(String),
     Bytes(Vec<u8>),
-    Stream(
-        Pin<
-            Box<
-                dyn Fn(TcpStream) -> Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>>
-                    + Send
-                    + Sync,
-            >,
-        >,
-    ),
+    Stream(Pin<Box<dyn Fn(TcpStream) -> ResultFuture + Send + Sync>>),
 }
-
 pub type ResultFuture = Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>>;
 pub type VoidFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
@@ -142,7 +133,6 @@ impl Response {
             Some(Body::Bytes(b)) => stream.write_all(b).await?,
             Some(Body::Stream(body_stream)) => {
                 let stream = stream.clone();
-                let body_stream = body_stream;
                 smol::spawn(body_stream(stream)).detach();
             }
             None => {}
@@ -158,15 +148,15 @@ impl Default for Response {
     }
 }
 
-impl Into<Response> for String {
-    fn into(self) -> Response {
-        Response::text(self)
+impl From<String> for Response {
+    fn from(value: String) -> Self {
+        Response::text(value)
     }
 }
 
-impl Into<Response> for &str {
-    fn into(self) -> Response {
-        Response::text(self)
+impl From<&str> for Response {
+    fn from(value: &str) -> Self {
+        Response::text(value)
     }
 }
 
