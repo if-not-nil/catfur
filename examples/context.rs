@@ -8,7 +8,6 @@ fn main() {
             let name: String = req.context.get("name").unwrap_or("guest".to_string());
             Response::text(format!("hello, {}", name))
         })
-        .build()
         .serve()
         .unwrap();
 }

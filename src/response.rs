@@ -136,3 +136,15 @@ impl Default for Response {
         Response::text("")
     }
 }
+
+impl Into<Response> for String {
+    fn into(self) -> Response {
+        Response::text(self)
+    }
+}
+
+impl Into<Response> for &str {
+    fn into(self) -> Response {
+        Response::text(self)
+    }
+}

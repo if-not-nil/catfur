@@ -47,9 +47,10 @@ impl Server {
     }
 
     // do not call this after calling serve()
-    fn add_route<F>(&mut self, method: Method, path: &str, handler: F)
+    fn add_route<F, R>(&mut self, method: Method, path: &str, handler: F)
     where
-        F: Fn(&Request) -> Response + Send + Sync + 'static,
+        F: Fn(&Request) -> R + Send + Sync + 'static,
+        R: Into<Response> + Send,
     {
         let segments = path
             .trim_start_matches('/')
@@ -63,9 +64,12 @@ impl Server {
             })
             .collect();
 
+        // Wrap the handler so it always returns a Response
+        let wrapped = move |req: &Request| handler(req).into();
+
         let route = Route {
             segments,
-            handler: Arc::new(Box::new(handler)),
+            handler: Arc::new(Box::new(wrapped)),
         };
 
         Arc::get_mut(&mut self.routes)
@@ -84,10 +88,7 @@ impl Server {
             move |req: &Request| {
                 let dir_path = dir_path.clone();
 
-                let file_path = req
-                    .path_params
-                    .get("filepath")
-                    .map_or("", String::as_str);
+                let file_path = req.path_params.get("filepath").map_or("", String::as_str);
 
                 if file_path.contains("..") {
                     return Response::error(StatusCode::ImATeapot); // pathbuf should protect u
@@ -238,27 +239,30 @@ impl Server {
     }
 
     #[must_use]
-    pub fn route<F>(mut self, method: Method, route: &str, handler: F) -> Self
+    pub fn route<F, R>(mut self, method: Method, route: &str, handler: F) -> Self
     where
-        F: Fn(&Request) -> Response + Send + Sync + 'static,
+        F: Fn(&Request) -> R + Send + Sync + 'static,
+        R: Into<Response> + Send,
     {
         self.add_route(method, route, handler);
         self
     }
 
     #[must_use]
-    pub fn get<F>(mut self, route: &str, handler: F) -> Self
+    pub fn get<F, R>(mut self, route: &str, handler: F) -> Self
     where
-        F: Fn(&Request) -> Response + Send + Sync + 'static,
+        F: Fn(&Request) -> R + Send + Sync + 'static,
+        R: Into<Response> + Send,
     {
         self.add_route(Method::GET, route, handler);
         self
     }
 
     #[must_use]
-    pub fn post<F>(mut self, route: &str, handler: F) -> Self
+    pub fn post<F, R>(mut self, route: &str, handler: F) -> Self
     where
-        F: Fn(&Request) -> Response + Send + Sync + 'static,
+        F: Fn(&Request) -> R + Send + Sync + 'static,
+        R: Into<Response> + Send,
     {
         self.add_route(Method::POST, route, handler);
         self
