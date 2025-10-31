@@ -120,7 +120,7 @@ impl Request {
             let content_length = headers
                 .get("content-length")
                 .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(0);
+                .unwrap_or(0); // should it be this?
 
             let mut body = vec![0u8; content_length];
             if content_length > 0 {

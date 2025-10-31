@@ -56,7 +56,6 @@ impl Response {
             .header("Transfer-Encoding", "chunked")
             .header("Content-Type", "text/event-stream")
             .header("Cache-Control", "no-cache")
-            .header("Content-Type", "text/plain")
     }
 
     pub fn sse<F, Fut>(f: F) -> Response
@@ -163,6 +162,7 @@ impl From<&str> for Response {
 pub struct SseSink {
     stream: smol::net::TcpStream,
 }
+
 
 impl SseSink {
     pub async fn send(&mut self, data: &str) -> std::io::Result<()> {

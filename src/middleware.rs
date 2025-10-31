@@ -8,17 +8,17 @@ pub fn logger(handler: Handler) -> Handler {
     Box::new(move |req: &Request| {
         let start = SystemTime::now();
         let res = handler(req);
-        let elapsed = start.elapsed().unwrap();
-        println!(
-            "{} request to {} took {:?}",
-            req.method,
-            req.route,
-            elapsed
-        );
+        let elapsed = match start.elapsed() {
+            Ok(r) => r,
+            Err(err) => {
+                eprintln!("(logger mw) system time error: {err}");
+                return res;
+            }
+        };
+        println!("{} request to {} took {:?}", req.method, req.route, elapsed);
         if res.status as u16 > 299 {
             println!("^^^ {}:\n{:?}", res.status.as_str(), res.body);
         }
-
         res
     })
 }

@@ -1,9 +1,16 @@
-use cf::{middleware, request::Request, response::Response, server::Server};
+use cf::{meta::Method, middleware, request::Request, response::Response, server::Server};
 
 fn main() -> std::io::Result<()> {
     Server::at("localhost:8080")
         .mw(middleware::cors)
         .mw(middleware::logger)
+        .route(Method::GET, "/asdf/{name}", |req| {
+            Response::text(format!(
+                "hi {}, u like {}?",
+                req.param("name").unwrap(),
+                req.query_param("fav_food").unwrap_or("NOTHING")
+            ))
+        })
         .get("/hi", |_| "hi") // anything that implements an Into<Response> goes. you can even
         // implement it yourself
         .get("/hello", |req: &Request| {
