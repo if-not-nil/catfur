@@ -8,15 +8,18 @@ use crate::meta::{Headers, StatusCode};
 pub enum Body {
     Text(String),
     Bytes(Vec<u8>),
+    Stream(Pin<Box<dyn Fn(TcpStream) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>>),
 }
 
-pub type ResultFuture<T> = Pin<Box<dyn Future<Output = smol::io::Result<T>> + Send>>;
+pub type ResultFuture = Pin<Box<dyn Future<Output = smol::io::Result<()>> + Send>>;
+pub type VoidFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 impl std::fmt::Debug for Body {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Text(arg0) => f.debug_tuple("Text").field(arg0).finish(),
             Self::Bytes(arg0) => f.debug_tuple("Bytes").field(arg0).finish(),
+            Body::Stream(_) => todo!(),
         }
     }
 }
@@ -44,6 +47,15 @@ impl Response {
 
     pub fn bytes(bytes: Vec<u8>, content_type: &str) -> Self {
         Self::new_with_body(Body::Bytes(bytes)).header("Content-Type", content_type)
+    }
+
+    pub fn stream<F>(stream: F) -> Self
+    where
+        F: Fn(TcpStream) -> VoidFuture + Send + Sync + 'static,
+    {
+        Self::new_with_body(Body::Stream(Box::pin(stream)))
+            .header("Transfer-Encoding", "chunked")
+            .header("Content-Type", "text/plain")
     }
 
     pub fn empty() -> Self {
@@ -95,7 +107,7 @@ impl Response {
         self
     }
 
-    pub async fn write_to(&self, stream: &mut TcpStream) -> std::io::Result<()> {
+    pub async fn write_to(&self, mut stream: TcpStream) -> std::io::Result<()> {
         let mut header_str = format!("HTTP/1.1 {}\r\n", self.status.as_str());
         for (k, v) in &self.headers {
             write!(&mut header_str, "{}: {}\r\n", k, v).unwrap();
@@ -107,6 +119,11 @@ impl Response {
         match &self.body {
             Some(Body::Text(s)) => stream.write_all(s.as_bytes()).await?,
             Some(Body::Bytes(b)) => stream.write_all(b).await?,
+            Some(Body::Stream(body_stream)) => {
+                let stream = stream.clone();
+                let body_stream = body_stream;
+                smol::spawn(body_stream(stream)).detach();
+            }
             None => {}
         }
 

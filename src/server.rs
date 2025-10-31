@@ -166,7 +166,7 @@ impl Server {
             Err(err) => {
                 eprintln!("failed to parse request: {err}");
                 let _ = Response::error(StatusCode::BadRequest)
-                    .write_to(&mut stream)
+                    .write_to(stream)
                     .await;
                 return;
             }
@@ -193,7 +193,7 @@ impl Server {
         }
 
         let response = h(&request);
-        if let Err(err) = response.finalize().write_to(&mut stream).await {
+        if let Err(err) = response.finalize().write_to(stream).await {
             match err.kind() {
                 std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset => {}
                 _ => eprintln!("failed to write response: {err}"),
